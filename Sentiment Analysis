@@ -1,0 +1,92 @@
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import numpy as np
+from sklearn.model_selection import train_test_split
+
+# Tokenisasi data review
+tokenizer = Tokenizer(num_words=5000, oov_token="<OOV>")
+tokenizer.fit_on_texts(data['Reviews'])
+sequences = tokenizer.texts_to_sequences(data['Reviews'])
+padded = pad_sequences(sequences, padding='post', maxlen=100)
+
+# Label untuk sentimen
+labels = np.where(data['Score'] > 50, 1, 0)  # Positif: 1, Negatif: 0
+
+# Split data menjadi training dan testing
+X_train, X_test, y_train, y_test = train_test_split(padded, labels, test_size=0.2, random_state=42)
+
+# Definisi model LSTM
+sentiment_model = Sequential([
+    Embedding(input_dim=5000, output_dim=128, input_length=100),
+    LSTM(128, return_sequences=True),
+    Dropout(0.2),
+    LSTM(64),
+    Dense(32, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+sentiment_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+sentiment_model.fit(X_train, y_train, epochs=5, batch_size=32, validation_split=0.2)
+
+# Evaluasi model pada data uji
+predicted_labels = (sentiment_model.predict(X_test) >= 0.5).astype(int)
+accuracy = accuracy_score(y_test, predicted_labels)
+precision = precision_score(y_test, predicted_labels)
+recall = recall_score(y_test, predicted_labels)
+f1 = f1_score(y_test, predicted_labels)
+
+print(f"Accuracy: {accuracy:.4f}")
+print(f"Precision: {precision:.4f}")
+print(f"Recall: {recall:.4f}")
+print(f"F1 Score: {f1:.4f}")
+
+# Tambahkan skor sentimen ke data asli
+data['Sentiment Score'] = sentiment_model.predict(padded)
+
+# Fungsi untuk mengolah ulasan baru dari pengguna dan memprediksi sentimen
+def predict_sentiment(user_review):
+    # Tokenisasi ulasan
+    review_seq = tokenizer.texts_to_sequences([user_review])
+    review_padded = pad_sequences(review_seq, padding='post', maxlen=100)
+
+    # Prediksi sentimen (0: Negatif, 1: Positif)
+    sentiment_score = sentiment_model.predict(review_padded)
+
+    # Menentukan apakah sentimen positif atau negatif
+    sentiment = 'Positif' if sentiment_score >= 0.5 else 'Negatif'
+
+    return sentiment, sentiment_score[0][0]
+
+# Fungsi untuk rekomendasi film berdasarkan sentimen
+def recommend_movie(sentiment):
+    if sentiment == 'Positif':
+        # Rekomendasikan film yang mendapat ulasan positif
+        recommended_movies = data[data['Sentiment Score'] > 0.5].sort_values(by='Sentiment Score', ascending=False)
+    else:
+        # Rekomendasikan film dengan ulasan yang lebih netral atau negatif
+        recommended_movies = data[data['Sentiment Score'] <= 0.5].sort_values(by='Sentiment Score', ascending=True)
+
+    # Menampilkan film yang direkomendasikan
+    return recommended_movies[['Movie Name', 'Sentiment Score']].head(3)
+
+# Interaksi dengan pengguna
+while True:
+    print("\n=== Sentimen dan Rekomendasi Film ===")
+    user_review = input("Masukkan ulasan Anda tentang film (ketik 'exit' untuk keluar): ")
+
+    if user_review.lower() == 'exit':
+        print("Terima kasih telah menggunakan sistem ini. Sampai jumpa!")
+        break
+
+    # Prediksi sentimen ulasan
+    sentiment, sentiment_score = predict_sentiment(user_review)
+    print(f"Sentimen: {sentiment}, Skor Sentimen: {sentiment_score:.4f}")
+
+    # Rekomendasi film
+    recommended_movies = recommend_movie(sentiment)
+    print("Rekomendasi Film untuk Anda:")
+    print(recommended_movies)
+

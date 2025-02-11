@@ -1,0 +1,102 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import json
+from transformers import pipeline
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer
+
+# Kelas movie_scraper untuk mengambil informasi dan review film
+class movie_scraper:
+    def __init__(self, name):
+        self.name = name
+
+    def get_movie_info(self):
+        data_url = f"http://www.omdbapi.com/?t={self.name}&apikey=79ce9d13"
+        resp = requests.get(data_url)
+        data = resp.json()  # Menggunakan json() untuk langsung mengonversi respons ke dictionary
+        return data
+
+    def get_movie_reviews(self, id):
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+        search_url = f"https://www.imdb.com/title/{id}/reviews/?ref_=tt_urv_sm"
+        response = requests.get(search_url, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        review_div = soup.find_all('div', class_="ipc-html-content-inner-div")
+        review_list = " ".join([review.get_text().strip() for review in review_div])  # Menggunakan list comprehension
+        return review_list
+
+    def contextualize_summary(self, summary):
+        parser = PlaintextParser.from_string(summary, Tokenizer("english"))
+        summarizer = LsaSummarizer()
+        raw_summary = ' '.join([str(sentence) for sentence in summarizer(parser.document, 20)])
+        pipe = pipeline("summarization", model="abhiramd22/t5-base-finetuned-to-summarize-movie-reviews")
+        contextual_summary = pipe(raw_summary, min_length=200, max_length=300)
+        return contextual_summary
+
+# Memuat data dari file Excel yang sudah di-scrape sebelumnya
+df = pd.read_excel('/content/data1.xlsx')
+
+# Membuat list untuk menyimpan data hasil scraping
+movie_data = []
+
+# Iterasi untuk mengambil nama film dari DataFrame
+for index, row in df.iterrows():
+    movie_name = row['Movie_name']
+    print(f"Processing movie: {movie_name}")
+
+    # Membuat objek movie_scraper untuk setiap film
+    obj = movie_scraper(movie_name)
+
+    # Mengambil informasi film
+    info = obj.get_movie_info()
+    id = info.get('imdbID', None)
+
+    if id:
+        print(f"IMDb ID: {id}")
+
+        # Mengambil review film
+        reviews = obj.get_movie_reviews(id)
+        print(f"Number of reviews: {len(reviews)}")
+
+        # Menyusun ringkasan review film
+        contextual_summary = obj.contextualize_summary(reviews)
+        print(f"Contextual Summary: {contextual_summary}")
+
+        # Menyimpan hasil ke dalam list
+        movie_data.append({
+            "Movie Name": movie_name,
+            "IMDb ID": id,
+            "Reviews": reviews,
+            "Contextual Summary": contextual_summary
+        })
+    else:
+        print(f"IMDb ID tidak ditemukan untuk film {movie_name}")
+        # Menyimpan data dengan informasi kosong
+        movie_data.append({
+            "Movie Name": movie_name,
+            "IMDb ID": None,
+            "Reviews": None,
+            "Contextual Summary": None
+        })
+
+# Membuat DataFrame dari hasil yang sudah dikumpulkan
+result_df = pd.DataFrame(movie_data)
+
+# Menyimpan DataFrame ke dalam file CSV
+result_df.to_csv('movie_reviews_and_summaries.csv', index=False)
+print("Data telah disimpan dalam 'movie_reviews_and_summaries.csv'")
+
+# Membaca file hasil scraping
+result_df = pd.read_csv('movie_reviews_and_summaries.csv')
+
+# Menggabungkan data Book1.xlsx dengan hasil scraping
+
+
+merged_df = pd.merge(df, result_df, left_on='Movie_name', right_on='Movie Name', how='outer')
+
+# Menyimpan hasil penggabungan ke file CSV baru
+merged_df.to_csv('merged_movie_data.csv', index=False)
+print("Data gabungan telah disimpan dalam 'merged_movie_data.csv'") 	

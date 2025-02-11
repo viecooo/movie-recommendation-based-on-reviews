@@ -1,2 +1,1 @@
-
-This project builds a movie recommendation system using Deep Learning and Sentiment Analysis to analyze user reviews. By classifying sentiments with NLP, and using LSTM for context, it suggests movies based on emotions, improving personalization beyond ratings for better user satisfaction.
+This project builds a movie recommendation system using Deep Learning, Sentiment Analysis, and SVD to analyze user reviews. By classifying sentiments with NLP, using LSTM for contextual understanding, and leveraging SVD for matrix factorization, the system suggests movies based on emotions and latent user preferences. This approach enhances personalization beyond ratings, leading to better user satisfaction."
